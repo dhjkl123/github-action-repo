@@ -6,6 +6,10 @@ app = FastAPI()
 def hello():
     return "hello"
 
+@app.get("/check")
+def check():
+    return "check"
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
