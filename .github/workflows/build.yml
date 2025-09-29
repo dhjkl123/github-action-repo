@@ -1,0 +1,35 @@
+name: build-and-push
+
+on:
+  push:
+    branches: [ "main" ]   # main 브랜치에 push될 때 실행
+  workflow_dispatch:        # 수동 실행 버튼으로도 실행 가능
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest  # GitHub 호스티드 runner 환경 (Linux)
+
+    permissions:
+      contents: read        # 코드 checkout 할 수 있는 권한
+      packages: write       # GHCR(GitHub Container Registry)에 push할 권한
+
+    steps:
+      - uses: actions/checkout@v4   # 리포지토리 코드 가져오기
+
+      - uses: docker/setup-buildx-action@v3  # buildx 사용 (멀티 플랫폼/캐시 지원)
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}          # 현재 워크플로우 실행한 사용자 이름
+          password: ${{ secrets.GITHUB_TOKEN }}  # GitHub이 자동 제공하는 토큰 (repo 권한 기반)
+
+      - name: Build and push (latest, sha)
+        uses: docker/build-push-action@v6
+        with:
+          context: .                       # 빌드 컨텍스트 (현재 리포지토리 루트)
+          push: true                       # 빌드한 이미지를 레지스트리에 push
+          tags: |                          # 푸시할 이미지 태그 목록
+            ghcr.io/${{ github.repository }}:latest    # 항상 latest로 갱신
+            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}  # 커밋 SHA 기반 불변 태그
