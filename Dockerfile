@@ -16,7 +16,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 # 소스 복사
-COPY app ./app
+COPY . ./app
 
 EXPOSE 8000
 USER appuser
