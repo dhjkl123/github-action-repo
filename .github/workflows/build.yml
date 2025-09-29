@@ -1,35 +1,53 @@
-name: build-and-push
+name: build-and-bump
 
 on:
   push:
-    branches: [ "main" ]   # main 브랜치에 push될 때 실행
-  workflow_dispatch:        # 수동 실행 버튼으로도 실행 가능
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
-  docker:
-    runs-on: ubuntu-latest  # GitHub 호스티드 runner 환경 (Linux)
-
+  build:
+    runs-on: ubuntu-latest
     permissions:
-      contents: read        # 코드 checkout 할 수 있는 권한
-      packages: write       # GHCR(GitHub Container Registry)에 push할 권한
-
+      contents: read         # 코드 체크아웃 권한
+      packages: write        # GHCR 푸시 권한
     steps:
-      - uses: actions/checkout@v4   # 리포지토리 코드 가져오기
-
-      - uses: docker/setup-buildx-action@v3  # buildx 사용 (멀티 플랫폼/캐시 지원)
-
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}          # 현재 워크플로우 실행한 사용자 이름
-          password: ${{ secrets.GITHUB_TOKEN }}  # GitHub이 자동 제공하는 토큰 (repo 권한 기반)
-
-      - name: Build and push (latest, sha)
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push (latest, sha)
         uses: docker/build-push-action@v6
         with:
-          context: .                       # 빌드 컨텍스트 (현재 리포지토리 루트)
-          push: true                       # 빌드한 이미지를 레지스트리에 push
-          tags: |                          # 푸시할 이미지 태그 목록
-            ghcr.io/${{ github.repository }}:latest   
-            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}  
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+
+  bump-manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # ⬇️ 매니페스트 레포를 워크스페이스로 체크아웃
+      - uses: actions/checkout@v4
+        with:
+          repository: dhjkl123/github-manifest-repo         # ← 매니페스트 레포 풀네임(예: dhjkl123/my-manifests)
+          token: ${{ secrets.MANIFEST_REPO_PAT }} # ← repo:write 권한 있는 PAT
+
+      # ⬇️ kustomization.yaml의 images[].newTag 한 줄만 sha-커밋으로 교체
+      - name: Set new tag in kustomization.yaml
+        run: sed -i "s#^\(\s*newTag:\s*\).*#\1sha-${GITHUB_SHA}#g" k8s/kustomization.yaml
+
+      # ⬇️ 변경분으로 PR 생성(브랜치/커밋/푸시까지 내부 처리)
+      - uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.MANIFEST_REPO_PAT }}
+          branch: ci/bump-${{ github.sha }}
+          base: main
+          title: "chore: bump image tag to sha-${{ github.sha }}"
+          commit-message: "chore: bump image tag to sha-${{ github.sha }}"
